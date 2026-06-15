@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "newapi",
+  "name": "New API",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#10B981",
+  "lines": [
+    { "type": "progress", "label": "Quota", "scope": "overview", "primaryOrder": 1 }
+  ]
+}
