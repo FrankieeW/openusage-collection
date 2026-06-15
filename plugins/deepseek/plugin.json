@@ -7,6 +7,7 @@
   "icon": "icon.svg",
   "brandColor": "#4D6BFE",
   "lines": [
-    { "type": "progress", "label": "Balance", "scope": "overview", "primaryOrder": 1 }
+    { "type": "progress", "label": "Period", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Overall", "scope": "overview", "primaryOrder": 2 }
   ]
 }

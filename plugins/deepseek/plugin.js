@@ -10,6 +10,15 @@
   }
   const DEFAULT_CURRENCY = "USD"
 
+  // Env var → rendered line mapping.
+  // - DEEPSEEK_PERIOD_LIMIT:    cap for a user-defined window (start/end of their choice)
+  // - DEEPSEEK_OVERALL_BALANCE: lifetime/cumulative pool (initial top-up + grants)
+  // Both are required. Period is the primary line since the user picked the window.
+  const REQUIRED_CAPS = [
+    { env: "DEEPSEEK_PERIOD_LIMIT", label: "Period" },
+    { env: "DEEPSEEK_OVERALL_BALANCE", label: "Overall" },
+  ]
+
   function readString(value) {
     if (typeof value !== "string") return null
     const trimmed = value.trim()
@@ -43,19 +52,22 @@
     return null
   }
 
-  function loadInitialBalance(ctx) {
+  function loadRequiredBalance(ctx, envName) {
     let value = null
     try {
-      value = ctx.host.env.get("DEEPSEEK_INITIAL_BALANCE")
+      value = ctx.host.env.get(envName)
     } catch (e) {
-      ctx.host.log.warn("env read failed for DEEPSEEK_INITIAL_BALANCE: " + String(e))
+      ctx.host.log.warn("env read failed for " + envName + ": " + String(e))
     }
-    return readNumber(value)
+    const n = readNumber(value)
+    if (n === null || n <= 0) {
+      throw "DeepSeek " + envName + " missing or invalid. Set it to a positive number (e.g. 5.00)."
+    }
+    return n
   }
 
-  // Returns { currency, balance, source } where source describes the
-  // resolution path ("usd" | "cny" | "fallback"). USD is preferred;
-  // CNY is the fallback when USD is missing.
+  // Returns { currency, balance } where USD is preferred; CNY is the
+  // fallback when USD is missing.
   function findBalance(balanceInfos) {
     if (!Array.isArray(balanceInfos) || balanceInfos.length === 0) return null
     let cnyBalance = null
@@ -64,10 +76,24 @@
       if (!info || typeof info !== "object") continue
       const balance = readNumber(info.total_balance)
       if (balance === null) continue
-      if (info.currency === "USD") return { currency: "USD", balance, source: "usd" }
-      if (info.currency === "CNY") cnyBalance = { currency: "CNY", balance, source: "cny" }
+      if (info.currency === "USD") return { currency: "USD", balance }
+      if (info.currency === "CNY") cnyBalance = { currency: "CNY", balance }
     }
     return cnyBalance
+  }
+
+  // Build a "used vs cap" progress line.
+  function pushCapLine(ctx, lines, label, cap, remaining, kind, currency) {
+    const used = Math.max(0, cap - remaining)
+    lines.push(
+      ctx.line.progress({
+        label: label,
+        used: used,
+        limit: cap,
+        format: { kind: kind, currency: currency },
+      })
+    )
+    return { used, limit: cap }
   }
 
   function probe(ctx) {
@@ -76,9 +102,10 @@
       throw "DeepSeek API key missing. Set DEEPSEEK_API_KEY."
     }
 
-    const initialBalance = loadInitialBalance(ctx)
-    if (initialBalance === null || initialBalance <= 0) {
-      throw "DeepSeek initial balance missing or invalid. Set DEEPSEEK_INITIAL_BALANCE to your starting balance (e.g. 10.00)."
+    const caps = {}
+    for (let i = 0; i < REQUIRED_CAPS.length; i += 1) {
+      const spec = REQUIRED_CAPS[i]
+      caps[spec.label] = loadRequiredBalance(ctx, spec.env)
     }
 
     let resp
@@ -116,19 +143,14 @@
     const currency = balanceInfo.currency
     const meta = CURRENCY_META[currency] || CURRENCY_META[DEFAULT_CURRENCY]
     const remainingBalance = balanceInfo.balance
-    const used = Math.max(0, initialBalance - remainingBalance)
 
-    return {
-      plan: currency,
-      lines: [
-        ctx.line.progress({
-          label: "Balance",
-          used: used,
-          limit: initialBalance,
-          format: { kind: meta.kind, currency: meta.symbol },
-        }),
-      ],
+    const lines = []
+    for (let i = 0; i < REQUIRED_CAPS.length; i += 1) {
+      const spec = REQUIRED_CAPS[i]
+      pushCapLine(ctx, lines, spec.label, caps[spec.label], remainingBalance, meta.kind, meta.symbol)
     }
+
+    return { plan: currency, lines }
   }
 
   globalThis.__openusage_plugin = { id: "deepseek", probe }
