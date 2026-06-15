@@ -536,4 +536,38 @@ describe("newapi plugin", () => {
     expect(total.used).toBeCloseTo(0.4, 3)
     expect(total.limit).toBeCloseTo(0.8, 3)
   })
+
+  it("emits 'Total' as the first line on overview with primaryOrder 1", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "DC1_NEWAPI_BASE_URL",
+      "DC1_NEWAPI_ACCESS_TOKEN",
+      "DC2_NEWAPI_BASE_URL",
+      "DC2_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      DC1_NEWAPI_BASE_URL: "https://dc1.example.com",
+      DC1_NEWAPI_ACCESS_TOKEN: "sk-dc1",
+      DC1_NEWAPI_SCOPE: "overview",
+      DC2_NEWAPI_BASE_URL: "https://dc2.example.com",
+      DC2_NEWAPI_ACCESS_TOKEN: "sk-dc2",
+      // DC2 has no _SCOPE — defaults to detail
+    })
+    ctx.util.request = vi.fn(() => ({
+      status: 200,
+      bodyText: JSON.stringify(successPayload(500000, 0)),
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Total unshifted to position 0, then DC1 (overview), then DC2 (detail)
+    expect(result.lines).toHaveLength(3)
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[0].scope).toBe("overview")
+    expect(result.lines[0].primaryOrder).toBe(1)
+    // Per-instance lines no longer carry primaryOrder
+    expect(result.lines[1].primaryOrder).toBeUndefined()
+    expect(result.lines[2].primaryOrder).toBeUndefined()
+  })
 })
