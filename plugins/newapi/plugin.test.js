@@ -498,4 +498,42 @@ describe("newapi plugin", () => {
     expect(total.used).toBeCloseTo(1.2, 3)
     expect(total.limit).toBeCloseTo(2.4, 3)
   })
+
+  it("excludes failed instances from the 'Total' sum", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "OK1_NEWAPI_BASE_URL",
+      "OK1_NEWAPI_ACCESS_TOKEN",
+      "OK2_NEWAPI_BASE_URL",
+      "OK2_NEWAPI_ACCESS_TOKEN",
+      "BAD_NEWAPI_BASE_URL",
+      "BAD_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      OK1_NEWAPI_BASE_URL: "https://api.ok1.com",
+      OK1_NEWAPI_ACCESS_TOKEN: "sk-ok1",
+      OK2_NEWAPI_BASE_URL: "https://api.ok2.com",
+      OK2_NEWAPI_ACCESS_TOKEN: "sk-ok2",
+      BAD_NEWAPI_BASE_URL: "https://api.bad.com",
+      BAD_NEWAPI_ACCESS_TOKEN: "sk-bad",
+    })
+    ctx.util.request = vi.fn((opts) => {
+      if (opts.url.indexOf("api.bad.com") !== -1) {
+        return { status: 500, bodyText: "boom" }
+      }
+      // OK1 and OK2: each remaining=100000, used=100000 → $0.20 used, $0.40 limit
+      return { status: 200, bodyText: JSON.stringify(successPayload(100000, 100000)) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // 4 lines: Total, OK1, OK2, BAD (error badge)
+    expect(result.lines).toHaveLength(4)
+    const total = result.lines[0]
+    expect(total.label).toBe("Total")
+    // Sum of OK1 + OK2 only: $0.40 used, $0.80 limit
+    expect(total.used).toBeCloseTo(0.4, 3)
+    expect(total.limit).toBeCloseTo(0.8, 3)
+  })
 })
