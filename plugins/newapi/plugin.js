@@ -27,6 +27,8 @@
 
   // Collect all env var names from the platform.
   // Tries the platform-provided methods in priority order.
+  // Returns { names, prefixOrder } where prefixOrder is non-null when
+  // OPENUSAGE_NEWAPI_PREFIXES declares an explicit order.
   function getEnvNames(ctx) {
     var methods = ["names", "list", "keys"]
     for (var m = 0; m < methods.length; m++) {
@@ -34,9 +36,9 @@
       if (ctx.host.env && typeof ctx.host.env[method] === "function") {
         try {
           var result = ctx.host.env[method]()
-          if (Array.isArray(result)) {
+          if (Array.isArray(result) && result.length > 0) {
             ctx.host.log.info("newapi: env listing via " + method + " returned " + result.length + " vars")
-            return result
+            return { names: result, prefixOrder: null }
           }
         } catch (e) {
           ctx.host.log.warn("newapi: env." + method + "() failed: " + String(e))
@@ -53,9 +55,11 @@
     if (prefixesEnv && typeof prefixesEnv === "string" && prefixesEnv.trim()) {
       var parts = prefixesEnv.split(",")
       var names = []
+      var orderList = []
       for (var p = 0; p < parts.length; p++) {
         var prefix = parts[p].trim()
         if (prefix) {
+          orderList.push(prefix)
           names.push(prefix + ENV_SUFFIX_BASE_URL)
           names.push(prefix + ENV_SUFFIX_ACCESS_TOKEN)
           names.push(prefix + ENV_SUFFIX_USER_ID)
@@ -63,16 +67,19 @@
         }
       }
       ctx.host.log.info("newapi: using OPENUSAGE_NEWAPI_PREFIXES fallback with " + parts.length + " prefixes")
-      return names
+      return { names: names, prefixOrder: orderList }
     }
 
-    return []
+    return { names: [], prefixOrder: null }
   }
 
   // Scan env var names for *_NEWAPI_BASE_URL patterns and collect configs.
-  // Returns an array sorted by prefix.
+  // When prefixOrder is set (from OPENUSAGE_NEWAPI_PREFIXES), use that order.
+  // Otherwise sort alphabetically by prefix.
   function collectConfigs(ctx) {
-    var names = getEnvNames(ctx)
+    var envResult = getEnvNames(ctx)
+    var names = envResult.names
+    var prefixOrder = envResult.prefixOrder
     var prefixMap = {}
 
     for (var i = 0; i < names.length; i++) {
@@ -127,8 +134,21 @@
       }
     }
 
-    // Sort by prefix key
-    var sortedPrefixes = Object.keys(prefixMap).sort()
+    // Sort: prefixOrder (from OPENUSAGE_NEWAPI_PREFIXES) takes priority,
+    // then fall back to alphabetical.
+    var sortedPrefixes
+    if (prefixOrder && prefixOrder.length > 0) {
+      sortedPrefixes = prefixOrder.filter(function (p) { return prefixMap[p] })
+      // Append any prefixes found via env scanning but not in the explicit list
+      var explicitSet = {}
+      for (var ep = 0; ep < prefixOrder.length; ep++) {
+        explicitSet[prefixOrder[ep]] = true
+      }
+      var remaining = Object.keys(prefixMap).sort().filter(function (p) { return !explicitSet[p] })
+      sortedPrefixes = sortedPrefixes.concat(remaining)
+    } else {
+      sortedPrefixes = Object.keys(prefixMap).sort()
+    }
     var configs = []
     for (var s = 0; s < sortedPrefixes.length; s++) {
       configs.push(prefixMap[sortedPrefixes[s]])
@@ -249,6 +269,7 @@
     var lines = []
     var planName = null
     var anySuccess = false
+    var primarySet = false
 
     for (var i = 0; i < configs.length; i++) {
       var config = configs[i]
@@ -267,6 +288,11 @@
 
       var line = buildLine(ctx, config, data)
       if (line) {
+        // First successful progress line is the primary overview bar
+        if (!primarySet && data && data.success && line.type === "progress") {
+          line.primaryOrder = 1
+          primarySet = true
+        }
         lines.push(line)
         if (data && data.success) {
           anySuccess = true

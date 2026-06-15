@@ -108,6 +108,7 @@ describe("newapi plugin", () => {
     expect(result.lines[0].label).toBe("Home Server")
     expect(result.lines[0].used).toBeCloseTo(0.2, 3)
     expect(result.lines[0].limit).toBeCloseTo(0.7, 3)
+    expect(result.lines[0].primaryOrder).toBe(1)
   })
 
   // ---- multiple configs sorted by prefix ----
@@ -150,6 +151,10 @@ describe("newapi plugin", () => {
     expect(result.lines[2].label).toBe("CC")
     // First successful plan name wins
     expect(result.plan).toBe("AA Plan")
+    // First progress line marked as primary
+    expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].primaryOrder).toBeUndefined()
+    expect(result.lines[2].primaryOrder).toBeUndefined()
   })
 
   // ---- display name from env ----
@@ -346,6 +351,38 @@ describe("newapi plugin", () => {
     expect(result.lines).toHaveLength(2)
     expect(result.lines[0].label).toBe("Data Center 1")
     expect(result.lines[1].label).toBe("Data Center 2")
+    expect(result.lines[0].primaryOrder).toBe(1)
+  })
+
+  // ---- OPENUSAGE_NEWAPI_PREFIXES order overrides alphabetical sort ----
+
+  it("respects OPENUSAGE_NEWAPI_PREFIXES order over alphabetical", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, []) // no env listing
+    setEnv(ctx, {
+      OPENUSAGE_NEWAPI_PREFIXES: "ZETA,ALPHA,BETA",
+      ZETA_NEWAPI_BASE_URL: "https://api.zeta.com",
+      ZETA_NEWAPI_ACCESS_TOKEN: "sk-zeta",
+      ALPHA_NEWAPI_BASE_URL: "https://api.alpha.com",
+      ALPHA_NEWAPI_ACCESS_TOKEN: "sk-alpha",
+      BETA_NEWAPI_BASE_URL: "https://api.beta.com",
+      BETA_NEWAPI_ACCESS_TOKEN: "sk-beta",
+    })
+    ctx.util.request = vi.fn(() => ({
+      status: 200,
+      bodyText: JSON.stringify(successPayload(100000, 0)),
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines).toHaveLength(3)
+    // Order follows OPENUSAGE_NEWAPI_PREFIXES: ZETA first, then ALPHA, then BETA
+    expect(result.lines[0].label).toBe("ZETA")
+    expect(result.lines[1].label).toBe("ALPHA")
+    expect(result.lines[2].label).toBe("BETA")
+    // ZETA is the primary
+    expect(result.lines[0].primaryOrder).toBe(1)
   })
 
   // ---- default plan name when group is missing ----
