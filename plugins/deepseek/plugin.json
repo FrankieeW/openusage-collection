@@ -9,6 +9,6 @@
   "lines": [
     { "type": "progress", "label": "Period", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Overall", "scope": "overview", "primaryOrder": 2 },
-    { "type": "badge", "label": "Status", "scope": "detail" }
+    { "type": "badge", "label": "Status", "scope": "overview" }
   ]
 }
