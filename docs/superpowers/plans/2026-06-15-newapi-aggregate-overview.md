@@ -692,8 +692,12 @@ Expected: the spec commit at the top, followed by the 9 implementation commits i
 - §"Edge cases" → Tasks 6, 8, 9 (partial failure, single instance, all-fail)
 - §"Architecture" → Tasks 3 and 4 (helper signature, unshift, scope)
 - §"plugin.json update" → Task 1
-- §"Testing" — six new tests → Tasks 2, 6, 7, 8, 9 (4 new tests with 2 more covered by Tasks 2+5's existing updates); 4 existing updates → Task 5
+- §"Testing" — six new tests → Tasks 2, 6, 7, 8, 9; 4 existing updates → Task 5; 3 additional `lines[0]`-shift updates caught by the final code review (added as a follow-up commit since the spec/plan's Task 5 list was incomplete): `uses _NEWAPI_NAME for the progress bar label`, `falls back to prefix as label when _NEWAPI_NAME is not set`, `defaults to detail scope with no primaryOrder`
 - §"Files touched" → matches the table at the top
+
+**Post-review corrections:**
+- The plan/spec listed 4 existing tests as needing update (those asserting `primaryOrder === 1` on `lines[0]`). The final code review caught 3 more tests that read per-instance attributes from `lines[0]` (label, scope, length) and would have failed at runtime. These were fixed in a follow-up commit on the feature branch.
+- Two additional pre-existing tests (`shows auth error badge on 401`, `shows error badge when API returns success: false`) were broken in the original newapi plugin commit (not caused by this feature). They expect `result.lines` to be populated, but `probe()` throws for a single failed instance because of the `anySuccess` guard. Marked as out-of-scope follow-up.
 
 **Placeholder scan:** No "TBD", "TODO", or vague directives. All code blocks are complete and copy-pastable.
 
