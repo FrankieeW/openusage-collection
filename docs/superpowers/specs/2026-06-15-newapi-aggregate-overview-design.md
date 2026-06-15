@@ -126,7 +126,13 @@ Six new tests in `plugins/newapi/plugin.test.js`:
    regression test for the demotion.
 6. **Aggregate never emits when all configs fail** — in a new test
    with every request returning HTTP 500, assert that `probe()` throws
-   and that no emitted line has `label === "Total"`.
+   and that no emitted line has `label === "Total"`. **Note on
+   assertion shape:** `probe()` throws a raw string (e.g.,
+   `throw "All NEWAPI requests failed. Check your configuration."`),
+   not an `Error` instance. The test therefore asserts
+   `expect(caught).toBeTruthy()` plus
+   `expect(String(caught)).toMatch(/All NEWAPI requests failed/)`,
+   not `expect(caught).toBeInstanceOf(Error)`.
 
 All existing tests must continue to pass. The following four existing
 assertions must be updated to reflect the new ordering:
@@ -141,6 +147,38 @@ assertions must be updated to reflect the new ordering:
   per-instance line at index 1 has no `primaryOrder`.
 - `respects OPENUSAGE_NEWAPI_PREFIXES order over alphabetical` — ZETA
   per-instance line at index 1 has no `primaryOrder`.
+
+In addition, three more pre-existing tests read per-instance
+attributes from `result.lines[0]` without asserting `primaryOrder`.
+They break for the same `lines[0]` shift reason and were caught by
+the final code review (not by the spec's list of 4 above):
+
+- `uses _NEWAPI_NAME for the progress bar label` — the per-instance
+  label is now at `lines[1]`, not `lines[0]`.
+- `falls back to prefix as label when _NEWAPI_NAME is not set` — same
+  shift, per-instance label at `lines[1]`.
+- `defaults to detail scope with no primaryOrder` — `length` is 2
+  (aggregate + per-instance), not 1; per-instance `scope` and
+  `primaryOrder` are at `lines[1]`.
+
+Out of scope: two pre-existing tests (`shows auth error badge on
+401`, `shows error badge when API returns success: false`) were
+broken in the original newapi plugin commit — they expected
+`result.lines` to be populated, but `probe()` throws before
+returning when the only configured instance fails (the `anySuccess`
+guard has been there since the original commit). **Resolved
+during implementation (commit `e582615`):** both tests updated to
+assert the throw happens with the expected message, matching the
+actual `probe()` behavior. Same fix shape as the Task 9 test.
+
+**Test-helpers.js note:** A minimal `plugins/test-helpers.js` was
+drafted during the final review to enable local test runs of the
+newapi suite (the collection repo has no test harness; the upstream
+openusage host provides its own). It was rolled back because a
+generic harness for all 21 plugins is a much larger effort — the
+draft only supported newapi's conventions and broke the other 20
+plugin test files when vitest discovered them. Running newapi
+tests still requires the upstream host's harness.
 
 The four updated tests must also assert that the line at index 0 has
 `label === "Total"` and `scope === "overview"`.

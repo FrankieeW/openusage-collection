@@ -106,11 +106,16 @@ describe("newapi plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("VIP套餐")
-    expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].label).toBe("Home Server")
+    // Aggregate at index 0; per-instance "Home Server" at index 1
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[0].scope).toBe("overview")
+    expect(result.lines[0].primaryOrder).toBe(1)
+    // Aggregate equals the single instance: remaining=$0.50, used=$0.20, total=$0.70
     expect(result.lines[0].used).toBeCloseTo(0.2, 3)
     expect(result.lines[0].limit).toBeCloseTo(0.7, 3)
-    expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].label).toBe("Home Server")
+    expect(result.lines[1].primaryOrder).toBeUndefined()
   })
 
   // ---- multiple configs sorted by prefix ----
@@ -148,17 +153,20 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    // Should be sorted AA, BB, CC
-    expect(result.lines).toHaveLength(3)
-    expect(result.lines[0].label).toBe("AA")
-    expect(result.lines[1].label).toBe("BB")
-    expect(result.lines[2].label).toBe("CC")
-    // First successful plan name wins
-    expect(result.plan).toBe("AA Plan")
-    // First progress line marked as primary
+    // Aggregate at index 0, then per-instance lines AA, BB, CC
+    expect(result.lines).toHaveLength(4)
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[0].scope).toBe("overview")
     expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].label).toBe("AA")
+    expect(result.lines[2].label).toBe("BB")
+    expect(result.lines[3].label).toBe("CC")
+    // First successful plan name wins (taken from the per-instance loop)
+    expect(result.plan).toBe("AA Plan")
+    // Per-instance lines no longer carry primaryOrder; the aggregate does
     expect(result.lines[1].primaryOrder).toBeUndefined()
     expect(result.lines[2].primaryOrder).toBeUndefined()
+    expect(result.lines[3].primaryOrder).toBeUndefined()
   })
 
   // ---- display name from env ----
@@ -183,7 +191,9 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].label).toBe("生产环境")
+    // Aggregate at index 0; per-instance "生产环境" at index 1
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[1].label).toBe("生产环境")
   })
 
   // ---- prefix as fallback label when no NAME set ----
@@ -206,7 +216,9 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].label).toBe("MYAPI")
+    // Aggregate at index 0; per-instance "MYAPI" (prefix fallback) at index 1
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[1].label).toBe("MYAPI")
   })
 
   // ---- auth error ----
@@ -225,10 +237,15 @@ describe("newapi plugin", () => {
     ctx.util.isAuthStatus = vi.fn((s) => s === 401 || s === 403)
 
     const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].type || result.lines[0].label).toBeTruthy()
+    // probe() throws when the only configured instance fails (anySuccess guard)
+    let caught
+    try {
+      plugin.probe(ctx)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeTruthy()
+    expect(String(caught)).toMatch(/All NEWAPI requests failed/)
   })
 
   // ---- API failure response ----
@@ -249,12 +266,15 @@ describe("newapi plugin", () => {
     }))
 
     const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    expect(result.lines).toHaveLength(1)
-    // The badge should appear for the failed lookup
-    const badge = result.lines[0]
-    expect(badge.type || badge.label).toBeTruthy()
+    // probe() throws when the only configured instance fails (anySuccess guard)
+    let caught
+    try {
+      plugin.probe(ctx)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeTruthy()
+    expect(String(caught)).toMatch(/All NEWAPI requests failed/)
   })
 
   // ---- throws when all requests fail ----
@@ -353,12 +373,16 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines).toHaveLength(2)
-    expect(result.lines[0].label).toBe("Data Center 1")
-    expect(result.lines[1].label).toBe("Data Center 2")
-    expect(result.lines[0].primaryOrder).toBe(1)
+    // Aggregate at index 0, then DC1 (overview) and DC2 (detail)
+    expect(result.lines).toHaveLength(3)
+    expect(result.lines[0].label).toBe("Total")
     expect(result.lines[0].scope).toBe("overview")
-    expect(result.lines[1].scope).toBe("detail")
+    expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].label).toBe("Data Center 1")
+    expect(result.lines[1].scope).toBe("overview")
+    expect(result.lines[1].primaryOrder).toBeUndefined()
+    expect(result.lines[2].label).toBe("Data Center 2")
+    expect(result.lines[2].scope).toBe("detail")
   })
 
   // ---- OPENUSAGE_NEWAPI_PREFIXES order overrides alphabetical sort ----
@@ -384,13 +408,16 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines).toHaveLength(3)
-    // Order follows OPENUSAGE_NEWAPI_PREFIXES: ZETA first, then ALPHA, then BETA
-    expect(result.lines[0].label).toBe("ZETA")
-    expect(result.lines[1].label).toBe("ALPHA")
-    expect(result.lines[2].label).toBe("BETA")
-    // ZETA is the primary (only overview)
+    expect(result.lines).toHaveLength(4)
+    // Aggregate at index 0, then per-instance in OPENUSAGE_NEWAPI_PREFIXES order
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[0].scope).toBe("overview")
     expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].label).toBe("ZETA")
+    expect(result.lines[2].label).toBe("ALPHA")
+    expect(result.lines[3].label).toBe("BETA")
+    // ZETA was the only overview instance; aggregate is now the primary
+    expect(result.lines[1].primaryOrder).toBeUndefined()
   })
 
   // ---- default scope is "detail", no primaryOrder ----
@@ -413,9 +440,11 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].scope).toBe("detail")
-    expect(result.lines[0].primaryOrder).toBeUndefined()
+    // Aggregate at index 0; per-instance line at index 1
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[1].scope).toBe("detail")
+    expect(result.lines[1].primaryOrder).toBeUndefined()
   })
 
   // ---- default plan name when group is missing ----
@@ -439,5 +468,176 @@ describe("newapi plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("New API")
+  })
+
+  // ---- aggregate overview line ----
+
+  it("emits a 'Total' line that sums quota+used across all instances", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "AA_NEWAPI_BASE_URL",
+      "AA_NEWAPI_ACCESS_TOKEN",
+      "BB_NEWAPI_BASE_URL",
+      "BB_NEWAPI_ACCESS_TOKEN",
+      "CC_NEWAPI_BASE_URL",
+      "CC_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      AA_NEWAPI_BASE_URL: "https://api.aa.com",
+      AA_NEWAPI_ACCESS_TOKEN: "sk-aa",
+      BB_NEWAPI_BASE_URL: "https://api.bb.com",
+      BB_NEWAPI_ACCESS_TOKEN: "sk-bb",
+      CC_NEWAPI_BASE_URL: "https://api.cc.com",
+      CC_NEWAPI_ACCESS_TOKEN: "sk-cc",
+    })
+    ctx.util.request = vi.fn((opts) => {
+      if (opts.url.indexOf("api.aa.com") !== -1) {
+        // remaining=100000, used=100000 → $0.20 used, $0.40 limit
+        return { status: 200, bodyText: JSON.stringify(successPayload(100000, 100000)) }
+      }
+      if (opts.url.indexOf("api.bb.com") !== -1) {
+        // remaining=200000, used=200000 → $0.40 used, $0.80 limit
+        return { status: 200, bodyText: JSON.stringify(successPayload(200000, 200000)) }
+      }
+      // CC: remaining=300000, used=300000 → $0.60 used, $1.20 limit
+      return { status: 200, bodyText: JSON.stringify(successPayload(300000, 300000)) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Total = AA(0.20/0.40) + BB(0.40/0.80) + CC(0.60/1.20) = 1.20/2.40
+    const total = result.lines[0]
+    expect(total.label).toBe("Total")
+    expect(total.used).toBeCloseTo(1.2, 3)
+    expect(total.limit).toBeCloseTo(2.4, 3)
+  })
+
+  it("excludes failed instances from the 'Total' sum", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "OK1_NEWAPI_BASE_URL",
+      "OK1_NEWAPI_ACCESS_TOKEN",
+      "OK2_NEWAPI_BASE_URL",
+      "OK2_NEWAPI_ACCESS_TOKEN",
+      "BAD_NEWAPI_BASE_URL",
+      "BAD_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      OK1_NEWAPI_BASE_URL: "https://api.ok1.com",
+      OK1_NEWAPI_ACCESS_TOKEN: "sk-ok1",
+      OK2_NEWAPI_BASE_URL: "https://api.ok2.com",
+      OK2_NEWAPI_ACCESS_TOKEN: "sk-ok2",
+      BAD_NEWAPI_BASE_URL: "https://api.bad.com",
+      BAD_NEWAPI_ACCESS_TOKEN: "sk-bad",
+    })
+    ctx.util.request = vi.fn((opts) => {
+      if (opts.url.indexOf("api.bad.com") !== -1) {
+        return { status: 500, bodyText: "boom" }
+      }
+      // OK1 and OK2: each remaining=100000, used=100000 → $0.20 used, $0.40 limit
+      return { status: 200, bodyText: JSON.stringify(successPayload(100000, 100000)) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // 4 lines: Total, OK1, OK2, BAD (error badge)
+    expect(result.lines).toHaveLength(4)
+    const total = result.lines[0]
+    expect(total.label).toBe("Total")
+    // Sum of OK1 + OK2 only: $0.40 used, $0.80 limit
+    expect(total.used).toBeCloseTo(0.4, 3)
+    expect(total.limit).toBeCloseTo(0.8, 3)
+  })
+
+  it("emits 'Total' as the first line on overview with primaryOrder 1", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "DC1_NEWAPI_BASE_URL",
+      "DC1_NEWAPI_ACCESS_TOKEN",
+      "DC2_NEWAPI_BASE_URL",
+      "DC2_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      DC1_NEWAPI_BASE_URL: "https://dc1.example.com",
+      DC1_NEWAPI_ACCESS_TOKEN: "sk-dc1",
+      DC1_NEWAPI_SCOPE: "overview",
+      DC2_NEWAPI_BASE_URL: "https://dc2.example.com",
+      DC2_NEWAPI_ACCESS_TOKEN: "sk-dc2",
+      // DC2 has no _SCOPE — defaults to detail
+    })
+    ctx.util.request = vi.fn(() => ({
+      status: 200,
+      bodyText: JSON.stringify(successPayload(500000, 0)),
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Total unshifted to position 0, then DC1 (overview), then DC2 (detail)
+    expect(result.lines).toHaveLength(3)
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[0].scope).toBe("overview")
+    expect(result.lines[0].primaryOrder).toBe(1)
+    // Per-instance lines no longer carry primaryOrder
+    expect(result.lines[1].primaryOrder).toBeUndefined()
+    expect(result.lines[2].primaryOrder).toBeUndefined()
+  })
+
+  it("emits 'Total' even when only one instance is configured", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "SOLO_NEWAPI_BASE_URL",
+      "SOLO_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      SOLO_NEWAPI_BASE_URL: "https://api.solo.com",
+      SOLO_NEWAPI_ACCESS_TOKEN: "sk-solo",
+    })
+    ctx.util.request = vi.fn(() => ({
+      status: 200,
+      bodyText: JSON.stringify(successPayload(200000, 50000)),
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // 2 lines: Total, then the per-instance line
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines[0].label).toBe("Total")
+    // Aggregate equals the single instance: used=$0.10, total=$0.50
+    expect(result.lines[0].used).toBeCloseTo(0.1, 3)
+    expect(result.lines[0].limit).toBeCloseTo(0.5, 3)
+    expect(result.lines[1].label).toBe("SOLO")
+  })
+
+  it("throws and emits no 'Total' line when every config fails", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "X_NEWAPI_BASE_URL",
+      "X_NEWAPI_ACCESS_TOKEN",
+      "Y_NEWAPI_BASE_URL",
+      "Y_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      X_NEWAPI_BASE_URL: "https://api.x.com",
+      X_NEWAPI_ACCESS_TOKEN: "sk-x",
+      Y_NEWAPI_BASE_URL: "https://api.y.com",
+      Y_NEWAPI_ACCESS_TOKEN: "sk-y",
+    })
+    ctx.util.request = vi.fn(() => ({ status: 500, bodyText: "Error" }))
+
+    const plugin = await loadPlugin()
+    // probe() must throw before the aggregate is ever built
+    let caught
+    try {
+      plugin.probe(ctx)
+    } catch (e) {
+      caught = e
+    }
+    // probe() throws a string (not an Error), so assert truthiness + substring
+    expect(caught).toBeTruthy()
+    expect(String(caught)).toMatch(/All NEWAPI requests failed/)
   })
 })

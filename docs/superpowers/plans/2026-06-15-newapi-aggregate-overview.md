@@ -642,7 +642,8 @@ git commit -m "test(newapi): verify 'Total' emits even with a single instance"
     } catch (e) {
       caught = e
     }
-    expect(caught).toBeInstanceOf(Error)
+    // probe() throws a string (not an Error), so assert truthiness + substring
+    expect(caught).toBeTruthy()
     expect(String(caught)).toMatch(/All NEWAPI requests failed/)
   })
 ```
@@ -691,8 +692,13 @@ Expected: the spec commit at the top, followed by the 9 implementation commits i
 - §"Edge cases" → Tasks 6, 8, 9 (partial failure, single instance, all-fail)
 - §"Architecture" → Tasks 3 and 4 (helper signature, unshift, scope)
 - §"plugin.json update" → Task 1
-- §"Testing" — six new tests → Tasks 2, 6, 7, 8, 9 (4 new tests with 2 more covered by Tasks 2+5's existing updates); 4 existing updates → Task 5
+- §"Testing" — six new tests → Tasks 2, 6, 7, 8, 9; 4 existing updates → Task 5; 3 additional `lines[0]`-shift updates caught by the final code review (added as a follow-up commit since the spec/plan's Task 5 list was incomplete): `uses _NEWAPI_NAME for the progress bar label`, `falls back to prefix as label when _NEWAPI_NAME is not set`, `defaults to detail scope with no primaryOrder`
 - §"Files touched" → matches the table at the top
+
+**Post-review corrections:**
+- The plan/spec listed 4 existing tests as needing update (those asserting `primaryOrder === 1` on `lines[0]`). The final code review caught 3 more tests that read per-instance attributes from `lines[0]` (label, scope, length) and would have failed at runtime. These were fixed in commit `a07ef8c` on the feature branch.
+- Two additional pre-existing tests (`shows auth error badge on 401`, `shows error badge when API returns success: false`) were broken in the original newapi plugin commit (not caused by this feature). They were also fixed in this feature, in commit `e582615`, to assert the throw happens with the expected message (same fix shape as Task 9's all-fail test).
+- A minimal `plugins/test-helpers.js` was drafted to enable local test runs but rolled back because a generic harness for all 21 plugins is a much larger effort — the draft only supported newapi's conventions and broke the other 20 plugin test files when vitest discovered them collectively.
 
 **Placeholder scan:** No "TBD", "TODO", or vague directives. All code blocks are complete and copy-pastable.
 

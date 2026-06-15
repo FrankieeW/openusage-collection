@@ -261,6 +261,32 @@
     return "New API"
   }
 
+  // Sum quota and used_quota across all instances that returned a valid
+  // success response. Excludes auth errors, network failures, success:false
+  // payloads, and missing/non-numeric quota fields. Returns { used, limit }
+  // in USD (divided by TOKEN_TO_USD_DIVISOR). Returns { used: 0, limit: 0 }
+  // when no instance qualifies.
+  function sumInstanceTotals(results) {
+    var totalRemaining = 0
+    var totalUsed = 0
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i]
+      if (!r || !r.data) continue
+      if (r.data.__authError) continue
+      if (!r.data.success) continue
+      if (!r.data.data || typeof r.data.data !== "object") continue
+      var remaining = readNumber(r.data.data.quota)
+      var used = readNumber(r.data.data.used_quota)
+      if (remaining === null || used === null) continue
+      totalRemaining += remaining
+      totalUsed += used
+    }
+    return {
+      used: totalUsed / TOKEN_TO_USD_DIVISOR,
+      limit: (totalRemaining + totalUsed) / TOKEN_TO_USD_DIVISOR,
+    }
+  }
+
   // ---- probe ----
 
   function probe(ctx) {
@@ -281,13 +307,14 @@
     var lines = []
     var planName = null
     var anySuccess = false
-    var primarySet = false
+    var results = []
 
     for (var i = 0; i < configs.length; i++) {
       var config = configs[i]
       ctx.host.log.info("newapi: fetching quota for " + config.prefix + " (" + config.displayName + ")")
 
       var data = fetchQuota(ctx, config)
+      results.push({ config: config, data: data })
 
       if (!data) {
         lines.push(ctx.line.badge({
@@ -300,11 +327,6 @@
 
       var line = buildLine(ctx, config, data)
       if (line) {
-        // First successful overview progress line is the primary bar
-        if (!primarySet && data && data.success && line.scope === "overview") {
-          line.primaryOrder = 1
-          primarySet = true
-        }
         lines.push(line)
         if (data && data.success) {
           anySuccess = true
@@ -320,6 +342,20 @@
     if (!anySuccess) {
       throw "All NEWAPI requests failed. Check your configuration."
     }
+
+    // Aggregate "Total" line — sums quota+used across all successful
+    // instances. Emitted at the front of `lines` with primaryOrder: 1 so
+    // it is the most prominent bar on the homepage.
+    var totals = sumInstanceTotals(results)
+    var aggregate = ctx.line.progress({
+      label: "Total",
+      used: totals.used,
+      limit: totals.limit,
+      format: { kind: "dollars" },
+    })
+    aggregate.scope = "overview"
+    aggregate.primaryOrder = 1
+    lines.unshift(aggregate)
 
     return { plan: planName || "New API", lines: lines }
   }
