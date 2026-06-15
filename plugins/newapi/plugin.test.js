@@ -440,4 +440,47 @@ describe("newapi plugin", () => {
 
     expect(result.plan).toBe("New API")
   })
+
+  // ---- aggregate overview line ----
+
+  it("emits a 'Total' line that sums quota+used across all instances", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "AA_NEWAPI_BASE_URL",
+      "AA_NEWAPI_ACCESS_TOKEN",
+      "BB_NEWAPI_BASE_URL",
+      "BB_NEWAPI_ACCESS_TOKEN",
+      "CC_NEWAPI_BASE_URL",
+      "CC_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      AA_NEWAPI_BASE_URL: "https://api.aa.com",
+      AA_NEWAPI_ACCESS_TOKEN: "sk-aa",
+      BB_NEWAPI_BASE_URL: "https://api.bb.com",
+      BB_NEWAPI_ACCESS_TOKEN: "sk-bb",
+      CC_NEWAPI_BASE_URL: "https://api.cc.com",
+      CC_NEWAPI_ACCESS_TOKEN: "sk-cc",
+    })
+    ctx.util.request = vi.fn((opts) => {
+      if (opts.url.indexOf("api.aa.com") !== -1) {
+        // remaining=100000, used=100000 → $0.20 used, $0.40 limit
+        return { status: 200, bodyText: JSON.stringify(successPayload(100000, 100000)) }
+      }
+      if (opts.url.indexOf("api.bb.com") !== -1) {
+        // remaining=200000, used=200000 → $0.40 used, $0.80 limit
+        return { status: 200, bodyText: JSON.stringify(successPayload(200000, 200000)) }
+      }
+      // CC: remaining=300000, used=300000 → $0.60 used, $1.20 limit
+      return { status: 200, bodyText: JSON.stringify(successPayload(300000, 300000)) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Total = AA(0.20/0.40) + BB(0.40/0.80) + CC(0.60/1.20) = 1.20/2.40
+    const total = result.lines[0]
+    expect(total.label).toBe("Total")
+    expect(total.used).toBeCloseTo(1.2, 3)
+    expect(total.limit).toBeCloseTo(2.4, 3)
+  })
 })
