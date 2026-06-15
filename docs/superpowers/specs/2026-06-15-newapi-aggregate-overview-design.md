@@ -101,9 +101,10 @@ In `plugins/newapi/plugin.js`:
 ]
 ```
 
-`Quota` remains as the per-instance template (each instance emits one
-with a dynamic label like `"Home"`, `"Work"`). `primaryOrder: 1` moves
-from `Quota` to `Total`.
+`Quota` remains as the per-instance template: each instance emits one
+progress line with a dynamic label (e.g., `"Home"`, `"Work"`) and
+`scope = config.scope` (from `_NEWAPI_SCOPE`). `primaryOrder: 1` moves
+from `Quota` to `Total` in the schema.
 
 ## Testing
 
@@ -123,15 +124,26 @@ Six new tests in `plugins/newapi/plugin.test.js`:
    per-instance line.
 5. **Per-instance overview lines no longer carry `primaryOrder`** —
    regression test for the demotion.
-6. **Aggregate never emits when all configs fail** — covered by the
-   existing "throws when all configs fail" test plus an explicit
-   assertion that no `label === "Total"` line is present.
+6. **Aggregate never emits when all configs fail** — in a new test
+   with every request returning HTTP 500, assert that `probe()` throws
+   and that no emitted line has `label === "Total"`.
 
-All existing tests must continue to pass. Tests that assert
-`primaryOrder === 1` on the first per-instance overview line are
-expected to be updated: the assertion moves to `result.lines[0]`
-(label `"Total"`) and the per-instance overview lines must have
-`primaryOrder === undefined`.
+All existing tests must continue to pass. The following four existing
+assertions must be updated to reflect the new ordering:
+
+- `renders a single progress line for one NEWAPI config` —
+  `result.lines[0].primaryOrder === 1` now refers to the aggregate
+  (label `"Total"`); the per-instance line at index 1 has
+  `primaryOrder === undefined`.
+- `renders multiple lines sorted by prefix` — same shift; AA
+  per-instance line at index 1 has no `primaryOrder`.
+- `discovers configs via OPENUSAGE_NEWAPI_PREFIXES fallback` — DC1
+  per-instance line at index 1 has no `primaryOrder`.
+- `respects OPENUSAGE_NEWAPI_PREFIXES order over alphabetical` — ZETA
+  per-instance line at index 1 has no `primaryOrder`.
+
+The four updated tests must also assert that the line at index 0 has
+`label === "Total"` and `scope === "overview"`.
 
 ## Files touched
 
