@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git push --force\",\"description\":\"Force push amended commit without secrets\"}",
+  "error": "Exit code 128\nfatal: The current branch main has no upstream branch.\nTo push the current branch and set the remote as upstream, use\n\n    git push --set-upstream origin main\n\nTo have this happen automatically for branches without a tracking\nupstream, see 'push.autoSetupRemote' in 'git help config'.",
+  "timestamp": "2026-06-15T02:28:00.826Z",
+  "retry_count": 1
+}

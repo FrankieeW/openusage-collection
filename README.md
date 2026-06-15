@@ -1,10 +1,9 @@
-# OpenUsage Plugin Hub
+# OpenUsage Collection
 
-Standalone plugin registry for [OpenUsage](https://github.com/robinebers/openusage).
+Community plugin collection for [OpenUsage.cc](https://github.com/FrankieeW/openusage).
 
-Add this repo as a source in OpenUsage's Plugin Hub:
 ```
-https://github.com/FrankieeW/openusage-plugin-hub
+https://github.com/FrankieeW/openusage-collection
 ```
 
 ## Plugin Schema
@@ -14,11 +13,11 @@ Each plugin lives in `plugins/<id>/` with:
 - `plugin.js` — entry script (`globalThis.__openusage_plugin`)
 - `icon.svg` — provider icon
 
-## Publishing a plugin
+## Publishing
 
 1. Fork this repo
 2. Add your plugin under `plugins/<id>/`
-3. Ensure `plugin.json` validates: `schemaVersion: 1`, `id` matches directory name
+3. `plugin.json`: `schemaVersion: 1`, `id` matches directory name
 4. Open a PR
 
 ## License
