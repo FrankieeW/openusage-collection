@@ -7,6 +7,9 @@
   "icon": "icon.svg",
   "brandColor": "#10B981",
   "lines": [
-    { "type": "progress", "label": "Quota", "scope": "overview", "primaryOrder": 1 }
+    { "type": "progress", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "scope": "overview" },
+    { "type": "progress", "scope": "detail" },
+    { "type": "badge", "scope": "detail" }
   ]
 }

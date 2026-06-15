@@ -107,8 +107,7 @@ describe("newapi plugin", () => {
 
     expect(result.plan).toBe("VIP套餐")
     expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].label).toBe("Quota")
-    expect(result.lines[0].subtitle).toBe("Home Server")
+    expect(result.lines[0].label).toBe("Home Server")
     expect(result.lines[0].used).toBeCloseTo(0.2, 3)
     expect(result.lines[0].limit).toBeCloseTo(0.7, 3)
     expect(result.lines[0].primaryOrder).toBe(1)
@@ -151,8 +150,7 @@ describe("newapi plugin", () => {
 
     // Should be sorted AA, BB, CC; AA (overview) uses label "Quota"
     expect(result.lines).toHaveLength(3)
-    expect(result.lines[0].label).toBe("Quota")
-    expect(result.lines[0].subtitle).toBe("AA")
+    expect(result.lines[0].label).toBe("AA")
     expect(result.lines[1].label).toBe("BB")
     expect(result.lines[2].label).toBe("CC")
     // First successful plan name wins
@@ -356,8 +354,7 @@ describe("newapi plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines).toHaveLength(2)
-    expect(result.lines[0].label).toBe("Quota")
-    expect(result.lines[0].subtitle).toBe("Data Center 1")
+    expect(result.lines[0].label).toBe("Data Center 1")
     expect(result.lines[1].label).toBe("Data Center 2")
     expect(result.lines[0].primaryOrder).toBe(1)
     expect(result.lines[0].scope).toBe("overview")
@@ -389,8 +386,7 @@ describe("newapi plugin", () => {
 
     expect(result.lines).toHaveLength(3)
     // Order follows OPENUSAGE_NEWAPI_PREFIXES: ZETA first, then ALPHA, then BETA
-    expect(result.lines[0].label).toBe("Quota")
-    expect(result.lines[0].subtitle).toBe("ZETA")
+    expect(result.lines[0].label).toBe("ZETA")
     expect(result.lines[1].label).toBe("ALPHA")
     expect(result.lines[2].label).toBe("BETA")
     // ZETA is the primary (only overview)
