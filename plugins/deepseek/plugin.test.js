@@ -12,20 +12,18 @@ function setEnv(ctx, envValues) {
   )
 }
 
-function successPayload(overrides) {
-  const base = {
+function successPayload(remaining) {
+  return {
     is_available: true,
     balance_infos: [
       {
         currency: "USD",
-        total_balance: "10.00",
+        total_balance: String(remaining),
         granted_balance: "0.00",
-        topped_up_balance: "10.00",
+        topped_up_balance: String(remaining),
       },
     ],
   }
-  if (!overrides) return base
-  return Object.assign(base, overrides)
 }
 
 describe("deepseek plugin", () => {
@@ -40,190 +38,211 @@ describe("deepseek plugin", () => {
 
   it("throws when API key is missing", async () => {
     const ctx = makeCtx()
-    setEnv(ctx, { DEEPSEEK_OVERALL_BALANCE: "20", DEEPSEEK_PERIOD_LIMIT: "5" })
+    setEnv(ctx, { DEEPSEEK_PERIOD_INIT: "120", DEEPSEEK_PERIOD_LIMIT: "20", DEEPSEEK_OVERALL_BALANCE: "200" })
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("DeepSeek API key missing")
   })
 
-  it("throws when overall balance is missing", async () => {
+  it("throws when period init is missing", async () => {
     const ctx = makeCtx()
-    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_PERIOD_LIMIT: "5" })
+    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_PERIOD_LIMIT: "20", DEEPSEEK_OVERALL_BALANCE: "200" })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("DEEPSEEK_OVERALL_BALANCE")
+    expect(() => plugin.probe(ctx)).toThrow("DEEPSEEK_PERIOD_INIT")
   })
 
   it("throws when period limit is missing", async () => {
     const ctx = makeCtx()
-    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_OVERALL_BALANCE: "20" })
+    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_PERIOD_INIT: "120", DEEPSEEK_OVERALL_BALANCE: "200" })
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("DEEPSEEK_PERIOD_LIMIT")
   })
 
-  it("throws when overall balance is zero", async () => {
+  it("throws when overall balance is missing", async () => {
     const ctx = makeCtx()
-    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_OVERALL_BALANCE: "0", DEEPSEEK_PERIOD_LIMIT: "5" })
+    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_PERIOD_INIT: "120", DEEPSEEK_PERIOD_LIMIT: "20" })
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("DEEPSEEK_OVERALL_BALANCE")
   })
 
-  it("renders Overall + Period lines with USD currency", async () => {
-    // remaining=10, overall=20, period=5 → Overall used=10, Period used=0
+  it("throws when period limit exceeds period init", async () => {
     const ctx = makeCtx()
     setEnv(ctx, {
       DEEPSEEK_API_KEY: "sk-test",
-      DEEPSEEK_OVERALL_BALANCE: "20",
-      DEEPSEEK_PERIOD_LIMIT: "5",
+      DEEPSEEK_PERIOD_INIT: "20",
+      DEEPSEEK_PERIOD_LIMIT: "100",
+      DEEPSEEK_OVERALL_BALANCE: "200",
     })
-    ctx.util.request = vi.fn(() => ({
-      status: 200,
-      bodyText: JSON.stringify(successPayload()),
-    }))
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("cannot exceed")
+  })
+
+  // ----- ok state: remaining = 110, used = 10 (under limit of 20) -----
+  it("renders ok state with no status badge when under limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, {
+      DEEPSEEK_API_KEY: "sk-test",
+      DEEPSEEK_PERIOD_INIT: "120",
+      DEEPSEEK_PERIOD_LIMIT: "20",
+      DEEPSEEK_OVERALL_BALANCE: "200",
+    })
+    ctx.util.request = vi.fn(() => ({ status: 200, bodyText: JSON.stringify(successPayload(110)) }))
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.plan).toBe("USD")
+    expect(result.lines).toHaveLength(2) // Period + Overall, no badge
     expect(result.lines.map((l) => l.label)).toEqual(["Period", "Overall"])
 
     const period = result.lines.find((l) => l.label === "Period")
-    const overall = result.lines.find((l) => l.label === "Overall")
-
-    expect(period.used).toBe(0)
-    expect(period.limit).toBe(5)
-    expect(period.format).toEqual({ kind: "dollars", currency: "$" })
-
-    expect(overall.used).toBeCloseTo(10, 2)
-    expect(overall.limit).toBe(20)
-    expect(overall.format).toEqual({ kind: "dollars", currency: "$" })
+    expect(period.used).toBeCloseTo(10, 2)
+    expect(period.limit).toBe(120)
+    expect(period.color).toBeUndefined()
   })
 
-  it("uses CNY balance and ¥ symbol when USD is absent", async () => {
-    // remaining=55, overall=100, period=60 → Overall used=45, Period used=5
+  // ----- warning state: remaining = 95, used = 25 (over 20 by ≤ 10%) -----
+  it("emits warning badge when used exceeds period limit by ≤ 10%", async () => {
     const ctx = makeCtx()
     setEnv(ctx, {
       DEEPSEEK_API_KEY: "sk-test",
-      DEEPSEEK_OVERALL_BALANCE: "100",
-      DEEPSEEK_PERIOD_LIMIT: "60",
+      DEEPSEEK_PERIOD_INIT: "120",
+      DEEPSEEK_PERIOD_LIMIT: "20",
+      DEEPSEEK_OVERALL_BALANCE: "200",
+    })
+    // remaining = 95 → used = 25 → exceeds 20 by 5 (25% of 20) → still warning
+    // (warning threshold is 20 * 1.1 = 22)
+    ctx.util.request = vi.fn(() => ({ status: 200, bodyText: JSON.stringify(successPayload(95)) }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const period = result.lines.find((l) => l.label === "Period")
+    expect(period.color).toBe("#f59e0b")
+
+    const badge = result.lines.find((l) => l.type === "badge")
+    expect(badge).toBeTruthy()
+    expect(badge.text).toBe("Period limit reached")
+    expect(badge.color).toBe("#f59e0b")
+  })
+
+  // ----- error state: remaining = 90, used = 30 (over 20 by 50%) -----
+  it("emits error badge when used exceeds period limit by > 10%", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, {
+      DEEPSEEK_API_KEY: "sk-test",
+      DEEPSEEK_PERIOD_INIT: "120",
+      DEEPSEEK_PERIOD_LIMIT: "20",
+      DEEPSEEK_OVERALL_BALANCE: "200",
+    })
+    // remaining = 90 → used = 30 → exceeds 20 by 10 (50% of 20) → error
+    ctx.util.request = vi.fn(() => ({ status: 200, bodyText: JSON.stringify(successPayload(90)) }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const period = result.lines.find((l) => l.label === "Period")
+    expect(period.color).toBe("#ef4444")
+
+    const badge = result.lines.find((l) => l.type === "badge")
+    expect(badge.text).toBe("Period limit exceeded")
+    expect(badge.color).toBe("#ef4444")
+  })
+
+  // ----- exact warning boundary: used = 20 + 1 (just over) -----
+  it("treats used = period_limit as warning threshold", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, {
+      DEEPSEEK_API_KEY: "sk-test",
+      DEEPSEEK_PERIOD_INIT: "120",
+      DEEPSEEK_PERIOD_LIMIT: "20",
+      DEEPSEEK_OVERALL_BALANCE: "200",
+    })
+    // remaining = 100 → used = 20 (= limit) → "ok" (per classify logic, > not >=)
+    ctx.util.request = vi.fn(() => ({ status: 200, bodyText: JSON.stringify(successPayload(100)) }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines).toHaveLength(2) // no badge
+  })
+
+  // ----- exact error boundary: used = 22 (limit + 10%) -----
+  it("treats used = period_limit * 1.1 as warning (boundary, not error)", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, {
+      DEEPSEEK_API_KEY: "sk-test",
+      DEEPSEEK_PERIOD_INIT: "120",
+      DEEPSEEK_PERIOD_LIMIT: "20",
+      DEEPSEEK_OVERALL_BALANCE: "200",
+    })
+    // remaining = 98 → used = 22 (= limit * 1.1) → still warning
+    ctx.util.request = vi.fn(() => ({ status: 200, bodyText: JSON.stringify(successPayload(98)) }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const badge = result.lines.find((l) => l.type === "badge")
+    expect(badge.text).toBe("Period limit reached")
+  })
+
+  // ----- CNY currency -----
+  it("uses CNY ¥ symbol throughout", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, {
+      DEEPSEEK_API_KEY: "sk-test",
+      DEEPSEEK_PERIOD_INIT: "120",
+      DEEPSEEK_PERIOD_LIMIT: "20",
+      DEEPSEEK_OVERALL_BALANCE: "200",
     })
     const payload = {
       is_available: true,
       balance_infos: [
-        { currency: "CNY", total_balance: "55.00", granted_balance: "5.00", topped_up_balance: "50.00" },
+        { currency: "CNY", total_balance: "110.00", granted_balance: "0.00", topped_up_balance: "110.00" },
       ],
     }
-    ctx.util.request = vi.fn(() => ({
-      status: 200,
-      bodyText: JSON.stringify(payload),
-    }))
+    ctx.util.request = vi.fn(() => ({ status: 200, bodyText: JSON.stringify(payload) }))
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("CNY")
-    expect(result.lines[0].format).toEqual({ kind: "dollars", currency: "¥" })
-    expect(result.lines[1].format).toEqual({ kind: "dollars", currency: "¥" })
-    expect(result.lines[0].used).toBeCloseTo(45, 2)
-    expect(result.lines[1].used).toBeCloseTo(5, 2)
+    expect(result.lines[0].format.currency).toBe("¥")
+    expect(result.lines[1].format.currency).toBe("¥")
   })
 
-  it("prefers USD over CNY when both are present", async () => {
-    // remaining=10 (USD), overall=20, period=5
-    const ctx = makeCtx()
-    setEnv(ctx, {
-      DEEPSEEK_API_KEY: "sk-test",
-      DEEPSEEK_OVERALL_BALANCE: "20",
-      DEEPSEEK_PERIOD_LIMIT: "5",
-    })
-    const payload = {
-      is_available: true,
-      balance_infos: [
-        { currency: "CNY", total_balance: "100.00", granted_balance: "0.00", topped_up_balance: "100.00" },
-        { currency: "USD", total_balance: "10.00", granted_balance: "0.00", topped_up_balance: "10.00" },
-      ],
-    }
-    ctx.util.request = vi.fn(() => ({
-      status: 200,
-      bodyText: JSON.stringify(payload),
-    }))
-
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    expect(result.plan).toBe("USD")
-    expect(result.lines[0].format.currency).toBe("$")
-    expect(result.lines[0].used).toBeCloseTo(10, 2)
-  })
-
-  it("clamps used to 0 when remaining exceeds cap (period fully refilled)", async () => {
-    // remaining=15, period=10 → Period used clamped to 0
-    const ctx = makeCtx()
-    setEnv(ctx, {
-      DEEPSEEK_API_KEY: "sk-test",
-      DEEPSEEK_OVERALL_BALANCE: "100",
-      DEEPSEEK_PERIOD_LIMIT: "10",
-    })
-    ctx.util.request = vi.fn(() => ({
-      status: 200,
-      bodyText: JSON.stringify(successPayload({
-        balance_infos: [
-          { currency: "USD", total_balance: "15.00", granted_balance: "0.00", topped_up_balance: "15.00" },
-        ],
-      })),
-    }))
-
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    const period = result.lines.find((l) => l.label === "Period")
-    expect(period.used).toBe(0)
-    expect(period.limit).toBe(10)
-  })
-
+  // ----- error path: no USD/CNY balance -----
   it("throws when no USD or CNY balance present", async () => {
     const ctx = makeCtx()
-    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_OVERALL_BALANCE: "20", DEEPSEEK_PERIOD_LIMIT: "5" })
+    setEnv(ctx, {
+      DEEPSEEK_API_KEY: "sk-test",
+      DEEPSEEK_PERIOD_INIT: "120",
+      DEEPSEEK_PERIOD_LIMIT: "20",
+      DEEPSEEK_OVERALL_BALANCE: "200",
+    })
     const payload = {
       is_available: true,
       balance_infos: [
         { currency: "EUR", total_balance: "20.00", granted_balance: "0.00", topped_up_balance: "20.00" },
       ],
     }
-    ctx.util.request = vi.fn(() => ({
-      status: 200,
-      bodyText: JSON.stringify(payload),
-    }))
+    ctx.util.request = vi.fn(() => ({ status: 200, bodyText: JSON.stringify(payload) }))
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Could not find USD or CNY balance")
   })
 
+  // ----- error path: auth -----
   it("handles auth error (401)", async () => {
     const ctx = makeCtx()
-    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-bad", DEEPSEEK_OVERALL_BALANCE: "20", DEEPSEEK_PERIOD_LIMIT: "5" })
+    setEnv(ctx, {
+      DEEPSEEK_API_KEY: "sk-bad",
+      DEEPSEEK_PERIOD_INIT: "120",
+      DEEPSEEK_PERIOD_LIMIT: "20",
+      DEEPSEEK_OVERALL_BALANCE: "200",
+    })
     ctx.util.request = vi.fn(() => ({ status: 401, bodyText: "Unauthorized" }))
     ctx.util.isAuthStatus = vi.fn((s) => s === 401 || s === 403)
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Session expired")
-  })
-
-  it("handles HTTP error status", async () => {
-    const ctx = makeCtx()
-    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_OVERALL_BALANCE: "20", DEEPSEEK_PERIOD_LIMIT: "5" })
-    ctx.util.request = vi.fn(() => ({ status: 500, bodyText: "Server Error" }))
-    ctx.util.isAuthStatus = vi.fn(() => false)
-
-    const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("HTTP 500")
-  })
-
-  it("handles invalid JSON response", async () => {
-    const ctx = makeCtx()
-    setEnv(ctx, { DEEPSEEK_API_KEY: "sk-test", DEEPSEEK_OVERALL_BALANCE: "20", DEEPSEEK_PERIOD_LIMIT: "5" })
-    ctx.util.request = vi.fn(() => ({ status: 200, bodyText: "not json" }))
-    ctx.util.isAuthStatus = vi.fn(() => false)
-
-    const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
   })
 })

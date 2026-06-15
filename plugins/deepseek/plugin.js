@@ -10,14 +10,11 @@
   }
   const DEFAULT_CURRENCY = "USD"
 
-  // Env var → rendered line mapping.
-  // - DEEPSEEK_PERIOD_LIMIT:    cap for a user-defined window (start/end of their choice)
-  // - DEEPSEEK_OVERALL_BALANCE: lifetime/cumulative pool (initial top-up + grants)
-  // Both are required. Period is the primary line since the user picked the window.
-  const REQUIRED_CAPS = [
-    { env: "DEEPSEEK_PERIOD_LIMIT", label: "Period" },
-    { env: "DEEPSEEK_OVERALL_BALANCE", label: "Overall" },
-  ]
+  // Status thresholds (when period is exceeded).
+  // - WARNING when remaining < (PERIOD_INIT - PERIOD_LIMIT)
+  // - ERROR   when remaining < (PERIOD_INIT - PERIOD_LIMIT * 1.1)
+  const WARNING_COLOR = "#f59e0b" // amber
+  const ERROR_COLOR = "#ef4444"   // red
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -61,7 +58,7 @@
     }
     const n = readNumber(value)
     if (n === null || n <= 0) {
-      throw "DeepSeek " + envName + " missing or invalid. Set it to a positive number (e.g. 5.00)."
+      throw "DeepSeek " + envName + " missing or invalid. Set it to a positive number (e.g. 120)."
     }
     return n
   }
@@ -83,17 +80,28 @@
   }
 
   // Build a "used vs cap" progress line.
-  function pushCapLine(ctx, lines, label, cap, remaining, kind, currency) {
+  function pushCapLine(ctx, lines, label, cap, remaining, kind, currency, color) {
     const used = Math.max(0, cap - remaining)
-    lines.push(
-      ctx.line.progress({
-        label: label,
-        used: used,
-        limit: cap,
-        format: { kind: kind, currency: currency },
-      })
-    )
+    const line = {
+      label: label,
+      used: used,
+      limit: cap,
+      format: { kind: kind, currency: currency },
+    }
+    if (color) line.color = color
+    lines.push(ctx.line.progress(line))
     return { used, limit: cap }
+  }
+
+  // Classify how much of the period's self-limit has been consumed.
+  // - "ok"      : used < period_limit
+  // - "warning" : used >= period_limit (limit hit; remaining < init - limit)
+  // - "error"   : used > period_limit * 1.1 (over by 10% of the limit)
+  function classifyPeriod(periodInit, periodLimit, remaining) {
+    const used = periodInit - remaining
+    if (used <= periodLimit) return "ok"
+    if (used <= periodLimit * 1.1) return "warning"
+    return "error"
   }
 
   function probe(ctx) {
@@ -102,10 +110,12 @@
       throw "DeepSeek API key missing. Set DEEPSEEK_API_KEY."
     }
 
-    const caps = {}
-    for (let i = 0; i < REQUIRED_CAPS.length; i += 1) {
-      const spec = REQUIRED_CAPS[i]
-      caps[spec.label] = loadRequiredBalance(ctx, spec.env)
+    const periodInit = loadRequiredBalance(ctx, "DEEPSEEK_PERIOD_INIT")
+    const periodLimit = loadRequiredBalance(ctx, "DEEPSEEK_PERIOD_LIMIT")
+    const overallBalance = loadRequiredBalance(ctx, "DEEPSEEK_OVERALL_BALANCE")
+
+    if (periodLimit > periodInit) {
+      throw "DEEPSEEK_PERIOD_LIMIT (" + periodLimit + ") cannot exceed DEEPSEEK_PERIOD_INIT (" + periodInit + ")."
     }
 
     let resp
@@ -144,10 +154,39 @@
     const meta = CURRENCY_META[currency] || CURRENCY_META[DEFAULT_CURRENCY]
     const remainingBalance = balanceInfo.balance
 
+    const status = classifyPeriod(periodInit, periodLimit, remainingBalance)
+    const periodColor = status === "error" ? ERROR_COLOR : status === "warning" ? WARNING_COLOR : null
+
     const lines = []
-    for (let i = 0; i < REQUIRED_CAPS.length; i += 1) {
-      const spec = REQUIRED_CAPS[i]
-      pushCapLine(ctx, lines, spec.label, caps[spec.label], remainingBalance, meta.kind, meta.symbol)
+
+    // Primary: Period (used vs init, with status color when over limit)
+    pushCapLine(ctx, lines, "Period", periodInit, remainingBalance, meta.kind, meta.symbol, periodColor)
+
+    // Secondary: Overall
+    pushCapLine(ctx, lines, "Overall", overallBalance, remainingBalance, meta.kind, meta.symbol)
+
+    // Status badge when the period limit is breached
+    if (status === "warning") {
+      lines.push(
+        ctx.line.badge({
+          label: "Status",
+          text: "Period limit reached",
+          color: WARNING_COLOR,
+          subtitle: "Remaining: " + meta.symbol + remainingBalance.toFixed(2) + " of " + meta.symbol + periodLimit.toFixed(2) + " allowed",
+        })
+      )
+    } else if (status === "error") {
+      const overage = remainingBalance < 0
+        ? "Negative by " + meta.symbol + Math.abs(remainingBalance - (periodInit - periodLimit)).toFixed(2)
+        : "Over limit"
+      lines.push(
+        ctx.line.badge({
+          label: "Status",
+          text: "Period limit exceeded",
+          color: ERROR_COLOR,
+          subtitle: overage,
+        })
+      )
     }
 
     return { plan: currency, lines }
