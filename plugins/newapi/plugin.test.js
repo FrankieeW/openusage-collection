@@ -191,7 +191,9 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].label).toBe("生产环境")
+    // Aggregate at index 0; per-instance "生产环境" at index 1
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[1].label).toBe("生产环境")
   })
 
   // ---- prefix as fallback label when no NAME set ----
@@ -214,7 +216,9 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].label).toBe("MYAPI")
+    // Aggregate at index 0; per-instance "MYAPI" (prefix fallback) at index 1
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[1].label).toBe("MYAPI")
   })
 
   // ---- auth error ----
@@ -428,9 +432,11 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].scope).toBe("detail")
-    expect(result.lines[0].primaryOrder).toBeUndefined()
+    // Aggregate at index 0; per-instance line at index 1
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[1].scope).toBe("detail")
+    expect(result.lines[1].primaryOrder).toBeUndefined()
   })
 
   // ---- default plan name when group is missing ----
