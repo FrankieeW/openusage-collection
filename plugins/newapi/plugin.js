@@ -245,12 +245,15 @@
     var totalUSD = remainingUSD + usedUSD
 
     var line = ctx.line.progress({
-      label: config.displayName,
+      label: config.scope === "overview" ? "Quota" : config.displayName,
       used: usedUSD,
       limit: totalUSD,
       format: { kind: "dollars" },
     })
     line.scope = config.scope
+    if (config.scope === "overview") {
+      line.subtitle = config.displayName
+    }
     return line
   }
 
