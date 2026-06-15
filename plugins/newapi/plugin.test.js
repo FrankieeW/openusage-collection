@@ -570,4 +570,31 @@ describe("newapi plugin", () => {
     expect(result.lines[1].primaryOrder).toBeUndefined()
     expect(result.lines[2].primaryOrder).toBeUndefined()
   })
+
+  it("emits 'Total' even when only one instance is configured", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "SOLO_NEWAPI_BASE_URL",
+      "SOLO_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      SOLO_NEWAPI_BASE_URL: "https://api.solo.com",
+      SOLO_NEWAPI_ACCESS_TOKEN: "sk-solo",
+    })
+    ctx.util.request = vi.fn(() => ({
+      status: 200,
+      bodyText: JSON.stringify(successPayload(200000, 50000)),
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // 2 lines: Total, then the per-instance line
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines[0].label).toBe("Total")
+    // Aggregate equals the single instance: used=$0.10, total=$0.50
+    expect(result.lines[0].used).toBeCloseTo(0.1, 3)
+    expect(result.lines[0].limit).toBeCloseTo(0.5, 3)
+    expect(result.lines[1].label).toBe("SOLO")
+  })
 })
