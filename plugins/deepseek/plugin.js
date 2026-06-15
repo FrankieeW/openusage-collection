@@ -167,8 +167,12 @@
 
     const lines = []
 
-    // Primary: Period (used vs PERIOD_LIMIT — the soft cap — with status color when over limit)
-    pushCapLine(ctx, lines, "Period", periodLimit, remainingBalance, meta.kind, meta.symbol, periodColor)
+    // Primary: Period (used vs limit, with status color when over limit)
+    // Bar cap = periodLimit, consumed = how much of the soft limit has been used.
+    // remainingBalance is the absolute API balance; map it into the limit window.
+    const consumed = Math.max(0, periodInit - remainingBalance)
+    const periodRemaining = Math.max(0, periodLimit - consumed)
+    pushCapLine(ctx, lines, "Period", periodLimit, periodRemaining, meta.kind, meta.symbol, periodColor)
 
     // Secondary: Overall
     pushCapLine(ctx, lines, "Overall", overallBalance, remainingBalance, meta.kind, meta.symbol)
