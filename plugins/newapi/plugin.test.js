@@ -106,11 +106,16 @@ describe("newapi plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("VIP套餐")
-    expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].label).toBe("Home Server")
+    // Aggregate at index 0; per-instance "Home Server" at index 1
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[0].scope).toBe("overview")
+    expect(result.lines[0].primaryOrder).toBe(1)
+    // Aggregate equals the single instance: remaining=$0.50, used=$0.20, total=$0.70
     expect(result.lines[0].used).toBeCloseTo(0.2, 3)
     expect(result.lines[0].limit).toBeCloseTo(0.7, 3)
-    expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].label).toBe("Home Server")
+    expect(result.lines[1].primaryOrder).toBeUndefined()
   })
 
   // ---- multiple configs sorted by prefix ----
@@ -148,17 +153,20 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    // Should be sorted AA, BB, CC
-    expect(result.lines).toHaveLength(3)
-    expect(result.lines[0].label).toBe("AA")
-    expect(result.lines[1].label).toBe("BB")
-    expect(result.lines[2].label).toBe("CC")
-    // First successful plan name wins
-    expect(result.plan).toBe("AA Plan")
-    // First progress line marked as primary
+    // Aggregate at index 0, then per-instance lines AA, BB, CC
+    expect(result.lines).toHaveLength(4)
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[0].scope).toBe("overview")
     expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].label).toBe("AA")
+    expect(result.lines[2].label).toBe("BB")
+    expect(result.lines[3].label).toBe("CC")
+    // First successful plan name wins (taken from the per-instance loop)
+    expect(result.plan).toBe("AA Plan")
+    // Per-instance lines no longer carry primaryOrder; the aggregate does
     expect(result.lines[1].primaryOrder).toBeUndefined()
     expect(result.lines[2].primaryOrder).toBeUndefined()
+    expect(result.lines[3].primaryOrder).toBeUndefined()
   })
 
   // ---- display name from env ----
@@ -353,12 +361,16 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines).toHaveLength(2)
-    expect(result.lines[0].label).toBe("Data Center 1")
-    expect(result.lines[1].label).toBe("Data Center 2")
-    expect(result.lines[0].primaryOrder).toBe(1)
+    // Aggregate at index 0, then DC1 (overview) and DC2 (detail)
+    expect(result.lines).toHaveLength(3)
+    expect(result.lines[0].label).toBe("Total")
     expect(result.lines[0].scope).toBe("overview")
-    expect(result.lines[1].scope).toBe("detail")
+    expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].label).toBe("Data Center 1")
+    expect(result.lines[1].scope).toBe("overview")
+    expect(result.lines[1].primaryOrder).toBeUndefined()
+    expect(result.lines[2].label).toBe("Data Center 2")
+    expect(result.lines[2].scope).toBe("detail")
   })
 
   // ---- OPENUSAGE_NEWAPI_PREFIXES order overrides alphabetical sort ----
@@ -384,13 +396,16 @@ describe("newapi plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines).toHaveLength(3)
-    // Order follows OPENUSAGE_NEWAPI_PREFIXES: ZETA first, then ALPHA, then BETA
-    expect(result.lines[0].label).toBe("ZETA")
-    expect(result.lines[1].label).toBe("ALPHA")
-    expect(result.lines[2].label).toBe("BETA")
-    // ZETA is the primary (only overview)
+    expect(result.lines).toHaveLength(4)
+    // Aggregate at index 0, then per-instance in OPENUSAGE_NEWAPI_PREFIXES order
+    expect(result.lines[0].label).toBe("Total")
+    expect(result.lines[0].scope).toBe("overview")
     expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[1].label).toBe("ZETA")
+    expect(result.lines[2].label).toBe("ALPHA")
+    expect(result.lines[3].label).toBe("BETA")
+    // ZETA was the only overview instance; aggregate is now the primary
+    expect(result.lines[1].primaryOrder).toBeUndefined()
   })
 
   // ---- default scope is "detail", no primaryOrder ----
