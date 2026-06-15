@@ -642,7 +642,8 @@ git commit -m "test(newapi): verify 'Total' emits even with a single instance"
     } catch (e) {
       caught = e
     }
-    expect(caught).toBeInstanceOf(Error)
+    // probe() throws a string (not an Error), so assert truthiness + substring
+    expect(caught).toBeTruthy()
     expect(String(caught)).toMatch(/All NEWAPI requests failed/)
   })
 ```

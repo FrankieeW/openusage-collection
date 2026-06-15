@@ -126,7 +126,13 @@ Six new tests in `plugins/newapi/plugin.test.js`:
    regression test for the demotion.
 6. **Aggregate never emits when all configs fail** — in a new test
    with every request returning HTTP 500, assert that `probe()` throws
-   and that no emitted line has `label === "Total"`.
+   and that no emitted line has `label === "Total"`. **Note on
+   assertion shape:** `probe()` throws a raw string (e.g.,
+   `throw "All NEWAPI requests failed. Check your configuration."`),
+   not an `Error` instance. The test therefore asserts
+   `expect(caught).toBeTruthy()` plus
+   `expect(String(caught)).toMatch(/All NEWAPI requests failed/)`,
+   not `expect(caught).toBeInstanceOf(Error)`.
 
 All existing tests must continue to pass. The following four existing
 assertions must be updated to reflect the new ordering:
