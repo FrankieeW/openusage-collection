@@ -237,10 +237,15 @@ describe("newapi plugin", () => {
     ctx.util.isAuthStatus = vi.fn((s) => s === 401 || s === 403)
 
     const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].type || result.lines[0].label).toBeTruthy()
+    // probe() throws when the only configured instance fails (anySuccess guard)
+    let caught
+    try {
+      plugin.probe(ctx)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeTruthy()
+    expect(String(caught)).toMatch(/All NEWAPI requests failed/)
   })
 
   // ---- API failure response ----
@@ -261,12 +266,15 @@ describe("newapi plugin", () => {
     }))
 
     const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    expect(result.lines).toHaveLength(1)
-    // The badge should appear for the failed lookup
-    const badge = result.lines[0]
-    expect(badge.type || badge.label).toBeTruthy()
+    // probe() throws when the only configured instance fails (anySuccess guard)
+    let caught
+    try {
+      plugin.probe(ctx)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeTruthy()
+    expect(String(caught)).toMatch(/All NEWAPI requests failed/)
   })
 
   // ---- throws when all requests fail ----
