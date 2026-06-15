@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "entry": "plugin.js",
   "icon": "icon.svg",
-  "brandColor": "#EC4899",
+  "brandColor": "#F85EAD",
   "lines": [
     { "type": "progress", "label": "Quota", "scope": "overview", "primaryOrder": 1 }
   ]
