@@ -261,6 +261,32 @@
     return "New API"
   }
 
+  // Sum quota and used_quota across all instances that returned a valid
+  // success response. Excludes auth errors, network failures, success:false
+  // payloads, and missing/non-numeric quota fields. Returns { used, limit }
+  // in USD (divided by TOKEN_TO_USD_DIVISOR). Returns { used: 0, limit: 0 }
+  // when no instance qualifies.
+  function sumInstanceTotals(results) {
+    var totalRemaining = 0
+    var totalUsed = 0
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i]
+      if (!r || !r.data) continue
+      if (r.data.__authError) continue
+      if (!r.data.success) continue
+      if (!r.data.data || typeof r.data.data !== "object") continue
+      var remaining = readNumber(r.data.data.quota)
+      var used = readNumber(r.data.data.used_quota)
+      if (remaining === null || used === null) continue
+      totalRemaining += remaining
+      totalUsed += used
+    }
+    return {
+      used: totalUsed / TOKEN_TO_USD_DIVISOR,
+      limit: (totalRemaining + totalUsed) / TOKEN_TO_USD_DIVISOR,
+    }
+  }
+
   // ---- probe ----
 
   function probe(ctx) {
