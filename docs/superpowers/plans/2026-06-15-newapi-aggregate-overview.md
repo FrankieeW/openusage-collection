@@ -696,8 +696,9 @@ Expected: the spec commit at the top, followed by the 9 implementation commits i
 - §"Files touched" → matches the table at the top
 
 **Post-review corrections:**
-- The plan/spec listed 4 existing tests as needing update (those asserting `primaryOrder === 1` on `lines[0]`). The final code review caught 3 more tests that read per-instance attributes from `lines[0]` (label, scope, length) and would have failed at runtime. These were fixed in a follow-up commit on the feature branch.
-- Two additional pre-existing tests (`shows auth error badge on 401`, `shows error badge when API returns success: false`) were broken in the original newapi plugin commit (not caused by this feature). They expect `result.lines` to be populated, but `probe()` throws for a single failed instance because of the `anySuccess` guard. Marked as out-of-scope follow-up.
+- The plan/spec listed 4 existing tests as needing update (those asserting `primaryOrder === 1` on `lines[0]`). The final code review caught 3 more tests that read per-instance attributes from `lines[0]` (label, scope, length) and would have failed at runtime. These were fixed in commit `a07ef8c` on the feature branch.
+- Two additional pre-existing tests (`shows auth error badge on 401`, `shows error badge when API returns success: false`) were broken in the original newapi plugin commit (not caused by this feature). They were also fixed in this feature, in commit `e582615`, to assert the throw happens with the expected message (same fix shape as Task 9's all-fail test).
+- A minimal `plugins/test-helpers.js` was drafted to enable local test runs but rolled back because a generic harness for all 21 plugins is a much larger effort — the draft only supported newapi's conventions and broke the other 20 plugin test files when vitest discovered them collectively.
 
 **Placeholder scan:** No "TBD", "TODO", or vague directives. All code blocks are complete and copy-pastable.
 

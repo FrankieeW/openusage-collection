@@ -163,12 +163,22 @@ the final code review (not by the spec's list of 4 above):
 
 Out of scope: two pre-existing tests (`shows auth error badge on
 401`, `shows error badge when API returns success: false`) were
-broken in the original newapi plugin commit — they expect
+broken in the original newapi plugin commit — they expected
 `result.lines` to be populated, but `probe()` throws before
 returning when the only configured instance fails (the `anySuccess`
-guard has been there since the original commit). They are unrelated
-to this feature's `lines[0]` shift and should be addressed in a
-separate change.
+guard has been there since the original commit). **Resolved
+during implementation (commit `e582615`):** both tests updated to
+assert the throw happens with the expected message, matching the
+actual `probe()` behavior. Same fix shape as the Task 9 test.
+
+**Test-helpers.js note:** A minimal `plugins/test-helpers.js` was
+drafted during the final review to enable local test runs of the
+newapi suite (the collection repo has no test harness; the upstream
+openusage host provides its own). It was rolled back because a
+generic harness for all 21 plugins is a much larger effort — the
+draft only supported newapi's conventions and broke the other 20
+plugin test files when vitest discovered them. Running newapi
+tests still requires the upstream host's harness.
 
 The four updated tests must also assert that the line at index 0 has
 `label === "Total"` and `scope === "overview"`.
