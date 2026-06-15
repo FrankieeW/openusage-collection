@@ -80,8 +80,16 @@
   }
 
   // Build a "used vs cap" progress line.
+  //
+  // The Period line uses DEEPSEEK_PERIOD_LIMIT as the cap so the progress bar
+  // reflects "how much of the soft limit has been consumed" — a healthy
+  // balance (remaining >= limit) reads as 0% and an empty balance reads as
+  // 100%, instead of the previous behavior where the cap was the period's
+  // initial balance and the limit only influenced the color threshold.
+  // Negative balances (returned by DeepSeek for accounts that have been
+  // charged past zero) are clamped to 100%.
   function pushCapLine(ctx, lines, label, cap, remaining, kind, currency, color) {
-    const used = Math.max(0, cap - remaining)
+    const used = Math.max(0, Math.min(cap, cap - remaining))
     const line = {
       label: label,
       used: used,
@@ -159,8 +167,8 @@
 
     const lines = []
 
-    // Primary: Period (used vs init, with status color when over limit)
-    pushCapLine(ctx, lines, "Period", periodInit, remainingBalance, meta.kind, meta.symbol, periodColor)
+    // Primary: Period (used vs PERIOD_LIMIT — the soft cap — with status color when over limit)
+    pushCapLine(ctx, lines, "Period", periodLimit, remainingBalance, meta.kind, meta.symbol, periodColor)
 
     // Secondary: Overall
     pushCapLine(ctx, lines, "Overall", overallBalance, remainingBalance, meta.kind, meta.symbol)
