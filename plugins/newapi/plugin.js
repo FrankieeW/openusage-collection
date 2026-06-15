@@ -4,6 +4,7 @@
   var ENV_SUFFIX_ACCESS_TOKEN = "_NEWAPI_ACCESS_TOKEN"
   var ENV_SUFFIX_USER_ID = "_NEWAPI_USERID"
   var ENV_SUFFIX_NAME = "_NEWAPI_NAME"
+  var ENV_SUFFIX_SCOPE = "_NEWAPI_SCOPE"
   var TOKEN_TO_USD_DIVISOR = 500000
 
   // ---- helpers ----
@@ -64,6 +65,7 @@
           names.push(prefix + ENV_SUFFIX_ACCESS_TOKEN)
           names.push(prefix + ENV_SUFFIX_USER_ID)
           names.push(prefix + ENV_SUFFIX_NAME)
+          names.push(prefix + ENV_SUFFIX_SCOPE)
         }
       }
       ctx.host.log.info("newapi: using OPENUSAGE_NEWAPI_PREFIXES fallback with " + parts.length + " prefixes")
@@ -125,12 +127,20 @@
       try { displayNameRaw = ctx.host.env.get(displayNameName) } catch (e) { /* ignore */ }
       var displayName = readString(displayNameRaw) || prefix
 
+      // Read scope (optional, defaults to "detail")
+      var scopeName = prefix + ENV_SUFFIX_SCOPE
+      var scopeRaw = null
+      try { scopeRaw = ctx.host.env.get(scopeName) } catch (e) { /* ignore */ }
+      var scopeValue = readString(scopeRaw)
+      var scope = scopeValue === "overview" ? "overview" : "detail"
+
       prefixMap[prefix] = {
         prefix: prefix,
         displayName: displayName,
         baseUrl: baseUrl.replace(/\/+$/, ""),
         accessToken: accessToken,
         userId: userId,
+        scope: scope,
       }
     }
 
@@ -234,12 +244,14 @@
     var usedUSD = usedQuota / TOKEN_TO_USD_DIVISOR
     var totalUSD = remainingUSD + usedUSD
 
-    return ctx.line.progress({
+    var line = ctx.line.progress({
       label: config.displayName,
       used: usedUSD,
       limit: totalUSD,
       format: { kind: "dollars" },
     })
+    line.scope = config.scope
+    return line
   }
 
   function buildPlanName(data) {
@@ -288,8 +300,8 @@
 
       var line = buildLine(ctx, config, data)
       if (line) {
-        // First successful progress line is the primary overview bar
-        if (!primarySet && data && data.success && line.type === "progress") {
+        // First successful overview progress line is the primary bar
+        if (!primarySet && data && data.success && line.scope === "overview") {
           line.primaryOrder = 1
           primarySet = true
         }

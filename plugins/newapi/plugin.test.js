@@ -86,6 +86,7 @@ describe("newapi plugin", () => {
       "HOME_NEWAPI_ACCESS_TOKEN",
       "HOME_NEWAPI_USERID",
       "HOME_NEWAPI_NAME",
+      "HOME_NEWAPI_SCOPE",
       "OTHER_VAR",
     ])
     setEnv(ctx, {
@@ -93,6 +94,7 @@ describe("newapi plugin", () => {
       HOME_NEWAPI_ACCESS_TOKEN: "sk-test-token",
       HOME_NEWAPI_USERID: "123",
       HOME_NEWAPI_NAME: "Home Server",
+      HOME_NEWAPI_SCOPE: "overview",
     })
     // quota=250000, used=100000 → remaining=$0.50, used=$0.20, total=$0.70
     ctx.util.request = vi.fn(() => ({
@@ -120,12 +122,14 @@ describe("newapi plugin", () => {
       "BB_NEWAPI_ACCESS_TOKEN",
       "AA_NEWAPI_BASE_URL",
       "AA_NEWAPI_ACCESS_TOKEN",
+      "AA_NEWAPI_SCOPE",
       "CC_NEWAPI_BASE_URL",
       "CC_NEWAPI_ACCESS_TOKEN",
     ])
     setEnv(ctx, {
       AA_NEWAPI_BASE_URL: "https://api.aa.com",
       AA_NEWAPI_ACCESS_TOKEN: "sk-aa",
+      AA_NEWAPI_SCOPE: "overview",
       BB_NEWAPI_BASE_URL: "https://api.bb.com",
       BB_NEWAPI_ACCESS_TOKEN: "sk-bb",
       CC_NEWAPI_BASE_URL: "https://api.cc.com",
@@ -337,6 +341,7 @@ describe("newapi plugin", () => {
       DC1_NEWAPI_BASE_URL: "https://dc1.example.com",
       DC1_NEWAPI_ACCESS_TOKEN: "sk-dc1",
       DC1_NEWAPI_NAME: "Data Center 1",
+      DC1_NEWAPI_SCOPE: "overview",
       DC2_NEWAPI_BASE_URL: "https://dc2.example.com",
       DC2_NEWAPI_ACCESS_TOKEN: "sk-dc2",
       DC2_NEWAPI_NAME: "Data Center 2",
@@ -352,6 +357,8 @@ describe("newapi plugin", () => {
     expect(result.lines[0].label).toBe("Data Center 1")
     expect(result.lines[1].label).toBe("Data Center 2")
     expect(result.lines[0].primaryOrder).toBe(1)
+    expect(result.lines[0].scope).toBe("overview")
+    expect(result.lines[1].scope).toBe("detail")
   })
 
   // ---- OPENUSAGE_NEWAPI_PREFIXES order overrides alphabetical sort ----
@@ -363,6 +370,7 @@ describe("newapi plugin", () => {
       OPENUSAGE_NEWAPI_PREFIXES: "ZETA,ALPHA,BETA",
       ZETA_NEWAPI_BASE_URL: "https://api.zeta.com",
       ZETA_NEWAPI_ACCESS_TOKEN: "sk-zeta",
+      ZETA_NEWAPI_SCOPE: "overview",
       ALPHA_NEWAPI_BASE_URL: "https://api.alpha.com",
       ALPHA_NEWAPI_ACCESS_TOKEN: "sk-alpha",
       BETA_NEWAPI_BASE_URL: "https://api.beta.com",
@@ -381,8 +389,33 @@ describe("newapi plugin", () => {
     expect(result.lines[0].label).toBe("ZETA")
     expect(result.lines[1].label).toBe("ALPHA")
     expect(result.lines[2].label).toBe("BETA")
-    // ZETA is the primary
+    // ZETA is the primary (only overview)
     expect(result.lines[0].primaryOrder).toBe(1)
+  })
+
+  // ---- default scope is "detail", no primaryOrder ----
+
+  it("defaults to detail scope with no primaryOrder", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "SVC_NEWAPI_BASE_URL",
+      "SVC_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      SVC_NEWAPI_BASE_URL: "https://api.svc.com",
+      SVC_NEWAPI_ACCESS_TOKEN: "sk-svc",
+    })
+    ctx.util.request = vi.fn(() => ({
+      status: 200,
+      bodyText: JSON.stringify(successPayload(100000, 0)),
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].scope).toBe("detail")
+    expect(result.lines[0].primaryOrder).toBeUndefined()
   })
 
   // ---- default plan name when group is missing ----
