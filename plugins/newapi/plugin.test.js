@@ -597,4 +597,33 @@ describe("newapi plugin", () => {
     expect(result.lines[0].limit).toBeCloseTo(0.5, 3)
     expect(result.lines[1].label).toBe("SOLO")
   })
+
+  it("throws and emits no 'Total' line when every config fails", async () => {
+    const ctx = makeCtx()
+    setEnvNames(ctx, [
+      "X_NEWAPI_BASE_URL",
+      "X_NEWAPI_ACCESS_TOKEN",
+      "Y_NEWAPI_BASE_URL",
+      "Y_NEWAPI_ACCESS_TOKEN",
+    ])
+    setEnv(ctx, {
+      X_NEWAPI_BASE_URL: "https://api.x.com",
+      X_NEWAPI_ACCESS_TOKEN: "sk-x",
+      Y_NEWAPI_BASE_URL: "https://api.y.com",
+      Y_NEWAPI_ACCESS_TOKEN: "sk-y",
+    })
+    ctx.util.request = vi.fn(() => ({ status: 500, bodyText: "Error" }))
+
+    const plugin = await loadPlugin()
+    // probe() must throw before the aggregate is ever built
+    let caught
+    try {
+      plugin.probe(ctx)
+    } catch (e) {
+      caught = e
+    }
+    // probe() throws a string (not an Error), so assert truthiness + substring
+    expect(caught).toBeTruthy()
+    expect(String(caught)).toMatch(/All NEWAPI requests failed/)
+  })
 })
